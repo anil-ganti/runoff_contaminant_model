@@ -33,6 +33,10 @@ def test_watershed_indexing():
     ds_ch_ = watershed.get_downstream_channel_sequence(watershed.channel_[c])
     print(ds_ch_)
 
+def test_watershed_graph():
+  print("Testing graph")
+  a__ = watershed.graph
+
 def test_solve_runoff():
   print("Running solve_runoff")
   fn_UHF = lambda x: gaussian(x, 1, 10, 1)

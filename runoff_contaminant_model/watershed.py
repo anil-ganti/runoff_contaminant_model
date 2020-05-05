@@ -38,7 +38,7 @@ class Simulation:
       Q_idx_ = watershed.get_downstream_indices(channel)
       L = len(channel.x_global_)
       for i,w in enumerate(channel.x_local_):
-        print("Solving point %d of size %d" % (i,len(channel.x_local_)-i))
+        #print("Solving point %d of size %d" % (i,len(channel.x_local_)-i))
         r_ = fn_RUN(t_, *channel.runoff_params__[i]) # Compute run-off function
         h_ = convolve(r_, u_)[:len(t_)]
         for j,x in enumerate(channel.x_global_):
@@ -75,6 +75,37 @@ class Simple_Watershed(Watershed):
   @property
   def C(self):
     return len(self.channel_)
+
+  @property
+  def N(self):
+    return self.Q__.shape[0]
+
+  @property
+  def K(self):
+    return self.Q__.shape[1]
+
+  @property
+  def graph(self):
+    a__ = zeros([self.K,self.K])
+    ptr = 0
+    # Connect individual channels
+    for c in range(self.C):
+      L_ch = self.channel_[c].L
+      a__[ptr:ptr+L_ch,ptr:ptr+L_ch] = diag(ones(L_ch-1),k=1)
+      ptr+= L_ch
+
+    # Connect channels together
+    for c1idx in range(self.C):
+      c1 = self.channel_[c1idx]
+      if sum(self.adjacency__[c1idx,:]) > 0:
+        c2idx = argmax(self.adjacency__[c1idx,:])
+        c2 = self.channel_[c2idx]
+        trib_idx = self.get_channel_indices(c1)[-1]
+        join_location = self.routing__[c1idx,c2idx]
+        main_idx = self.get_channel_indices(c2)[int(join_location)]
+
+        a__[trib_idx,main_idx] = 1
+    return a__
 
   ### Initialization ###
   ######################
