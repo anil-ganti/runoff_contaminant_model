@@ -3,10 +3,11 @@ from numpy import *
 import runoff_contaminant_model.common as cmn
 import runoff_contaminant_model.watershed as ws
 import runoff_contaminant_model.channel as ch
-from runoff_contaminant_model.common import gaussian, IRF
+from runoff_contaminant_model.common import *
 
 L_ = [10,10,10]
-r_ = 2*ones(10).reshape(10,1)
+uhf_params_ = asarray([1,1]) #gaussian location, width
+uhf_params__ = kron(ones(10).reshape([10,1]),uhf_params_)
 ch_ = list(map(lambda L: ch.Simple_Channel(L,arange(L),r_,None),L_))
 confluence_ = [(1,0,7),(2,1,7)]
 
@@ -39,9 +40,10 @@ def test_watershed_graph():
 
 def test_solve_runoff():
   print("Running solve_runoff")
-  fn_UHF = lambda x: gaussian(x, 1, 10, 1)
-  fn_IRF = lambda x,t: IRF(x,t,1,1,10, 1)
-  def runoff(t_,step_loc):
+  fn_UHF = gaussian
+  fn_IRF = lambda x,t: fundamental_solution(x,t,celerity=1,diffusivity=1)
+  def input(t_,step_loc):
     return (t_ < step_loc).astype(float)
-  fn_RUN = runoff
-  sim.solve_runoff(watershed, fn_UHF, fn_IRF, fn_RUN)
+  fn_IN = lambda t: input(t,10)
+  sim.solve_runoff(watershed, fn_UHF, fn_IRF, fn_IN)
+  assert(not isnan(watershed.Q__).any())
