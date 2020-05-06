@@ -21,5 +21,5 @@ def fundamental_solution(x_,t_,diffusivity=1,celerity=1):
       loc = celerity*t
       width = sqrt(2*diffusivity*t)
       out__[i,j] = gaussian(x,amp=amp,loc=loc,width=width)
-  out__[0,:]
+  out__[0,:] = 0
   return out__

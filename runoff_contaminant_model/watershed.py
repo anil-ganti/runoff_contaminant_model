@@ -22,7 +22,7 @@ class Simulation:
   ### Solve coupled PDEs ###
   ##########################
 
-  def solve_runoff(self, watershed, fn_UHF, fn_IRF, fn_RUN):
+  def solve_runoff(self, watershed, fn_UHF, fn_IRF, fn_INPUT):
     '''
     Solve for Q(x,t) over the whole domain.
     Loop through each point in the domain
@@ -30,7 +30,7 @@ class Simulation:
       add that point's contribution to the total solution, Q(x,t)
     '''
     t_ = watershed.t_ # time domain is universal
-    u_ = fn_UHF(t_) # unit hydrograph function is same everywhere
+    p_ = fn_INPUT(t_) # input, ie. precipitation is same everywhere
     for k,channel in enumerate(watershed.channel_):
       print("Solving channel %d" % k)
       x_ = channel.x_global_ # spatial domain in coordinate system of local channel
@@ -39,8 +39,8 @@ class Simulation:
       L = len(channel.x_global_)
       for i,w in enumerate(channel.x_local_):
         #print("Solving point %d of size %d" % (i,len(channel.x_local_)-i))
-        r_ = fn_RUN(t_, *channel.runoff_params__[i]) # Compute run-off function
-        h_ = convolve(r_, u_)[:len(t_)]
+        u_ = fn_UHF(t_, *channel.runoff_params__[i]) # Compute run-off function
+        h_ = convolve(p_, u_)[:len(t_)]
         for j,x in enumerate(channel.x_global_):
           q_ = convolve(h_, i__[:,j])[:len(t_)]
           watershed.Q__[:,Q_idx_[j]] = q_ + watershed.Q__[:,Q_idx_[j]]
