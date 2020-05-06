@@ -103,7 +103,6 @@ class Simple_Watershed(Watershed):
         trib_idx = self.get_channel_indices(c1)[-1]
         join_location = self.routing__[c1idx,c2idx]
         main_idx = self.get_channel_indices(c2)[int(join_location)]
-
         a__[trib_idx,main_idx] = 1
     return a__
 
@@ -113,6 +112,10 @@ class Simple_Watershed(Watershed):
     '''
     Given a simulation, initialize the spatial, temporal domain, etc.
     '''
+
+    self.dt = sim.dt
+    self.dx = sim.dx
+
     self.initialize_routing_matrix()
     self.initialize_domain(sim)
     for i,channel in enumerate(self.channel_):
@@ -166,6 +169,9 @@ class Simple_Watershed(Watershed):
   ### Index manipulation ###
   ##########################
 
+  def get_index(self, x):
+    return int(x / self.dx)
+
   def get_downstream_channel_sequence(self, channel):
     '''
     Return a sequence of channels that are downstream of this channel
@@ -188,7 +194,7 @@ class Simple_Watershed(Watershed):
     for c2_idx in self.get_downstream_channel_sequence(channel):
       route_val = self.routing__[c1_idx, c2_idx]
       x = 0 if route_val == 1 else route_val # How far upstream does this trib come in?
-      idx_ += list(self.get_channel_indices(self.channel_[c2_idx], x=int(x)))
+      idx_ += list(self.get_channel_indices(self.channel_[c2_idx], x=x))
     return asarray(idx_)
 
   def get_channel_indices(self, channel, x=0):
@@ -201,4 +207,4 @@ class Simple_Watershed(Watershed):
     ptr = 0
     for i in range(ch_idx):
       ptr += self.channel_[i].K
-    return ptr + arange(channel.K)[-x:]
+    return ptr + arange(channel.K)[-self.get_index(x):]
