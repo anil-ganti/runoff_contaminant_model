@@ -1,7 +1,12 @@
 from numpy import *
 
 def gaussian(x, amp=1, loc=0, width=1):
-  return amp*exp(-(x-loc)**2/(2*width**2))
+  out_ = amp*exp(-(x-loc)**2/(2*width**2))
+  if isinstance(out_,ndarray):
+    out_[isnan(out_)] = 0
+  elif isnan(out_):
+    out_ = 0
+  return out_
 
 def normalized_gaussian(x,loc=0,width=1):
   amp = 1/(width*sqrt(2*pi))
@@ -23,3 +28,15 @@ def fundamental_solution(x_,t_,diffusivity=1,celerity=1):
       out__[i,j] = gaussian(x,amp=amp,loc=loc,width=width)
   out__[0,:] = 0
   return out__
+
+def mdot(*args):
+  '''
+  Left-to-right associative matrix multiplication of multiple 2D ndarrays.
+  '''
+  try:
+    ret = args[0]
+    for a in args[1:]:
+      ret = dot(ret, a)
+  except:
+    raise
+  return ret

@@ -1,4 +1,7 @@
 from numpy import *
+from numpy.linalg import inv
+from copy import deepcopy
+
 from .common import *
 
 class Simulation:
@@ -8,9 +11,9 @@ class Simulation:
 
     self.T = cfg['T']
 
-    # Gaussian pulse as unit hydrograph function
-    #self.fn_UHF = lambda t_: gaussian(t_, *sim.UHF_params_)
-    #self.fn_IRF = lambda x_,t_: IRF(x_, t_, *sim.IRF_params_)
+    self.Q0 = cfg['Q0']
+    self.v0 = cfg['v0']
+    self.D_cont = cfg['D_cont']
 
     self.L = sum([channel.L for channel in watershed.channel_])
 
@@ -44,11 +47,55 @@ class Simulation:
         for j,x in enumerate(channel.x_global_):
           q_ = convolve(h_, i__[:,j])[:len(t_)]
           watershed.Q__[:,Q_idx_[j]] = q_ + watershed.Q__[:,Q_idx_[j]]
+    watershed.Q__ += self.Q0 # add baseflow
+
+  def calc_B(self, watershed, L):
+    B__ = zeros([L,L])
+    alpha = self.D_cont * self.dt / (self.dx**2)
+    beta = self.dt / (2*self.dx)
+    v = self.v0
+    fill_diagonal(B__, 1+2*alpha)
+    for i in range(L-1):
+      B__[i,i+1] = -(beta*v + alpha)
+      B__[i+1,i] = -(beta*v + alpha)
+    B__[0,0] = 1
+    B__[-1,-1] = 1
+    B__[0,1] = 0
+    B__[-1,-2] = 0
+    return B__
+
+  def solve_contaminant(self, watershed, fn_MASS):
+    t_ = watershed.t_
+    for k,channel in enumerate(watershed.channel_):
+      idx_ = watershed.get_channel_indices(channel)
+      c_idx_ = watershed.get_downstream_indices(channel)
+      x_ = channel.x_global_
+      # run the implicit scheme for every contributing point
+      for i,w in enumerate(channel.x_local_[:-1]):
+        B__ = self.calc_B(watershed, len(x_[i:]))
+        #B__ = eye(len(x_[i:])) # does not change for constant channel velocity
+        Binv__ = inv(B__)
+        m_ = fn_MASS(t_, *channel.contaminant_params__[i])
+        c_ = zeros([len(x_[i:]),1])
+        cnp1_ = zeros([len(x_[i:]),1])
+        for n,t in enumerate(t_[:-1]):
+          Q_k = watershed.Q__[n,idx_[i]]
+          s = m_[n] / Q_k # calculate source term
+          if i > 0:
+            Q_km1 = watershed.Q__[n,idx_[i-1]]
+            s += watershed.c__[n,idx_[i-1]] * ((Q_km1 / Q_k)-1)
+          c_[0] += s
+          c_np1_ = mdot(Binv__,c_)
+          #if not (c_np1_ == 0).all():
+          #  print(c_np1_)
+          watershed.c__[n+1,c_idx_[i:]] = watershed.c__[n+1,c_idx_[i:]].flatten() + c_np1_.flatten()
+          c_ = cnp1_
 
 class Watershed:
   '''
   Top-level object which defines the entire spatial domain. Consists of a tree of channels.
   Spatial domain in this object is flattened into a single column vector.
+
   Properties:
       Simulation properties:
           channel_ - list of 1D channels which comprise the watershed
@@ -208,3 +255,29 @@ class Simple_Watershed(Watershed):
     for i in range(ch_idx):
       ptr += self.channel_[i].K
     return ptr + arange(channel.K)[-self.get_index(x):]
+
+  ### Watershed visualization ###
+  def channel_xy_points(self, ch_idx, xf, yf, th):
+    x_local_ = -1*self.channel_[ch_idx].x_local_
+    x_ = flip(xf + cos(radians(th))*x_local_)
+    y_ = flip(yf + sin(radians(th))*x_local_)
+    return vstack((x_,y_)).transpose() # L x 2
+
+  def watershed_xy_points(self, th):
+    outlet_pos__ = empty([self.C,self.C])
+    xy__ = []
+    for i,ch in enumerate(self.channel_):
+      seq_ = self.get_downstream_channel_sequence(ch)
+      if len(seq_) == 0:
+        xf_ = asarray([0,0,0]) # set main channel to flow into 0,0
+      else:
+        c2idx = seq_[0]
+        L = self.routing__[i,c2idx] # how far upstream to join?
+        c2pos_ = outlet_pos__[c2idx]
+        xf_ = deepcopy(c2pos_)
+        xf_[2] += th
+        xf_[:2] -= asarray([L*cos(radians(c2pos_[2])),L*sin(radians(c2pos_[2]))])
+      xy__.append(self.channel_xy_points(i,xf_[0],xf_[1],xf_[2]))
+      outlet_pos__[i] = xf_
+    xy__ = vstack(tuple(xy__))
+    return xy__
