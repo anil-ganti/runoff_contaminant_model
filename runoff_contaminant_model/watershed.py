@@ -73,22 +73,24 @@ class Simulation:
       x_ = channel.x_global_
       B__ = self.calc_B(watershed, len(x_))
       Binv__ = inv(B__)
-      c_ = zeros([len(x_),1])
-      cnp1_ = zeros([len(x_),1])
+      Lws = len(x_) # length of the total domain
+      Lch = len(idx_)
+      c_ = zeros([Lws,1])
+      cnp1_ = zeros([Lws,1])
       for n,t in enumerate(t_[:-1]):
         m_ = asarray(list(map(
           lambda p_: fn_MASS(t, *p_),channel.contaminant_params__)))
         Q_k_ = watershed.Q__[n,c_idx_]
-        s_ = zeros(len(x_))
-        s_[:len(m_)] = divide(m_, Q_k_[:len(m_)])
+        s_ = zeros(Lws)
+        s_[:Lch] = divide(m_, Q_k_[:Lch])
 
-        Q_km1_ = zeros(len(Q_k_))
+        Q_km1_ = zeros(Lws)
         Q_km1_[1:] = Q_k_[:1]
-        c_km1_ = zeros(len(x_))
+        c_km1_ = zeros(Lws)
         c_km1_[1:] = c_[:1]
 
         s_ = s_ + multiply(c_km1_,(divide(Q_km1_,Q_k_)-1))
-        s_ = s_.reshape(len(x_),1)
+        s_ = s_.reshape(Lws,1)
         c_ = c_ + s_
         c_np1_ = mdot(Binv__,c_)
         # add to global solution
