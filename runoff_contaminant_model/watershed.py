@@ -67,29 +67,33 @@ class Simulation:
   def solve_contaminant(self, watershed, fn_MASS):
     t_ = watershed.t_
     for k,channel in enumerate(watershed.channel_):
+      print("solving channel %d" % k)
       idx_ = watershed.get_channel_indices(channel)
       c_idx_ = watershed.get_downstream_indices(channel)
       x_ = channel.x_global_
-      # run the implicit scheme for every contributing point
-      for i,w in enumerate(channel.x_local_[:-1]):
-        B__ = self.calc_B(watershed, len(x_[i:]))
-        #B__ = eye(len(x_[i:])) # does not change for constant channel velocity
-        Binv__ = inv(B__)
-        m_ = fn_MASS(t_, *channel.contaminant_params__[i])
-        c_ = zeros([len(x_[i:]),1])
-        cnp1_ = zeros([len(x_[i:]),1])
-        for n,t in enumerate(t_[:-1]):
-          Q_k = watershed.Q__[n,idx_[i]]
-          s = m_[n] / Q_k # calculate source term
-          if i > 0:
-            Q_km1 = watershed.Q__[n,idx_[i-1]]
-            s += watershed.c__[n,idx_[i-1]] * ((Q_km1 / Q_k)-1)
-          c_[0] += s
-          c_np1_ = mdot(Binv__,c_)
-          #if not (c_np1_ == 0).all():
-          #  print(c_np1_)
-          watershed.c__[n+1,c_idx_[i:]] = watershed.c__[n+1,c_idx_[i:]].flatten() + c_np1_.flatten()
-          c_ = cnp1_
+      B__ = self.calc_B(watershed, len(x_))
+      Binv__ = inv(B__)
+      c_ = zeros([len(x_),1])
+      cnp1_ = zeros([len(x_),1])
+      for n,t in enumerate(t_[:-1]):
+        m_ = asarray(list(map(
+          lambda p_: fn_MASS(t, *p_),channel.contaminant_params__)))
+        Q_k_ = watershed.Q__[n,c_idx_]
+        s_ = zeros(len(x_))
+        s_[:len(m_)] = divide(m_, Q_k_[:len(m_)])
+
+        Q_km1_ = zeros(len(Q_k_))
+        Q_km1_[1:] = Q_k_[:1]
+        c_km1_ = zeros(len(x_))
+        c_km1_[1:] = c_[:1]
+
+        s_ = s_ + multiply(c_km1_,(divide(Q_km1_,Q_k_)-1))
+        s_ = s_.reshape(len(x_),1)
+        c_ = c_ + s_
+        c_np1_ = mdot(Binv__,c_)
+        # add to global solution
+        watershed.c__[n+1,c_idx_] = watershed.c__[n+1,c_idx_] + c_np1_.flatten()
+        c_ = deepcopy(cnp1_)
 
 class Watershed:
   '''
