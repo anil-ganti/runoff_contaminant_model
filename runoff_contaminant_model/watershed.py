@@ -22,6 +22,14 @@ class Simulation:
 
     watershed.initialize(self)
 
+  @property
+  def alpha(self):
+    return self.D_cont * self.dt / (self.dx**2)
+
+  @property
+  def beta(self):
+    return self.dt / (2*self.dx)
+
   ### Solve coupled PDEs ###
   ##########################
 
@@ -51,15 +59,13 @@ class Simulation:
 
   def calc_B(self, watershed, L):
     B__ = zeros([L,L])
-    alpha = self.D_cont * self.dt / (self.dx**2)
-    beta = self.dt / (2*self.dx)
     v = self.v0
-    fill_diagonal(B__, 1+2*alpha)
+    fill_diagonal(B__, 1+2*self.alpha)
     for i in range(L-1):
-      B__[i,i+1] = -(beta*v + alpha)
-      B__[i+1,i] = -(beta*v + alpha)
-    B__[0,0] = 1
-    B__[-1,-1] = 1
+      B__[i,i+1] = -(self.beta*v + self.alpha)
+      B__[i+1,i] = -(self.beta*v + self.alpha)
+    #B__[0,0] = 1
+    #B__[-1,-1] = 1
     B__[0,1] = 0
     B__[-1,-2] = 0
     return B__
@@ -71,12 +77,12 @@ class Simulation:
       idx_ = watershed.get_channel_indices(channel)
       c_idx_ = watershed.get_downstream_indices(channel)
       x_ = channel.x_global_
-      B__ = self.calc_B(watershed, len(x_))
-      Binv__ = inv(B__)
       Lws = len(x_) # length of the total domain
       Lch = len(idx_)
+      B__ = self.calc_B(watershed, Lws)
+      Binv__ = inv(B__)
       c_ = zeros([Lws,1])
-      cnp1_ = zeros([Lws,1])
+      c_np1_ = zeros([Lws,1])
       for n,t in enumerate(t_[:-1]):
         m_ = asarray(list(map(
           lambda p_: fn_MASS(t, *p_),channel.contaminant_params__)))
@@ -93,9 +99,10 @@ class Simulation:
         s_ = s_.reshape(Lws,1)
         c_ = c_ + s_
         c_np1_ = mdot(Binv__,c_)
+
         # add to global solution
         watershed.c__[n+1,c_idx_] = watershed.c__[n+1,c_idx_] + c_np1_.flatten()
-        c_ = deepcopy(cnp1_)
+        c_ = deepcopy(c_np1_)
 
 class Watershed:
   '''
