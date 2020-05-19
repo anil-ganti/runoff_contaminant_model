@@ -8,10 +8,15 @@ from runoff_contaminant_model.common import *
 L_ = [10,10,10]
 uhf_params_ = asarray([1,1]) #gaussian location, width
 uhf_params__ = kron(ones(10).reshape([10,1]),uhf_params_)
-ch_ = list(map(lambda L: ch.Simple_Channel(L,arange(L),r_,None),L_))
+mass_params_ = asarray([0,0,0])
+mass_params__ = kron(ones(10).reshape([10,1]),mass_params_)
+mass_params__[0] = asarray([10,0,0.1])
+
+ch_ = list(map(
+  lambda L: ch.Simple_Channel(L,arange(L),uhf_params__,mass_params__),L_))
 confluence_ = [(1,0,7),(2,1,7)]
 
-cfg = {'dx':1, 'dt':1, 'T':10}
+cfg = {'dx':1, 'dt':1, 'T':10, 'Q0':1, 'v0':1,'D_cont':1}
 watershed = ws.Simple_Watershed(ch_,confluence_)
 sim = ws.Simulation(cfg,watershed)
 
@@ -47,3 +52,13 @@ def test_solve_runoff():
   fn_IN = lambda t: input(t,10)
   sim.solve_runoff(watershed, fn_UHF, fn_IRF, fn_IN)
   assert(not isnan(watershed.Q__).any())
+
+def test_solve_contaminant():
+  print("Running solve_contaminant")
+  fn_MASS = gaussian
+  watershed.Q__ += 10
+  sim.solve_contaminant(watershed, fn_MASS)
+  assert(not isnan(watershed.c__).any())
+
+def test_watershed_xy_points():
+  xy__ = watershed.watershed_xy_points(10)
