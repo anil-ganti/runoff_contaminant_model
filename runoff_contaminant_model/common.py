@@ -29,6 +29,10 @@ def fundamental_solution(x_,t_,diffusivity=1,celerity=1):
   out__[0,:] = 0
   return out__
 
+def H(A, **kwargs):
+  '''Returns the conjugate (Hermitian) transpose of a matrix.'''
+  return transpose(A, **kwargs).conj()
+
 def mdot(*args):
   '''
   Left-to-right associative matrix multiplication of multiple 2D ndarrays.

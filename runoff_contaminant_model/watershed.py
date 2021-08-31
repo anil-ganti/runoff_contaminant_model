@@ -5,33 +5,41 @@ from copy import deepcopy
 from .common import *
 
 class Simulation:
+  '''
+  Wrapper simulation object used to store the simulation hyper-parameters and initialize the whole thing.
+  This object is used to store properties we want to keep out of the objects which represent physical things.
+  The split between what lives here and what lives in Watershed is not perfect or precise, just done by "feel".
+  '''
   def __init__(self, cfg, watershed):
-    self.dx = cfg['dx']
-    self.dt = cfg['dt']
+    self.dx = cfg['dx'] # spatial resolution
+    self.dt = cfg['dt'] # temporal resolution
 
-    self.T = cfg['T']
+    self.T = cfg['T'] # Time domain over which to solve
 
-    self.Q0 = cfg['Q0']
-    self.v0 = cfg['v0']
-    self.D_cont = cfg['D_cont']
+    self.Q0 = cfg['Q0'] # Add baseflow to avoid div by zero. TODO: this should be cumulative!!!
+    self.v0 = cfg['v0'] # Placeholder contaminant velocity. TODO: This should be linked to run-off field
+    self.D_cont = cfg['D_cont'] # Contaminant diffusion coefficient
 
-    self.L = sum([channel.L for channel in watershed.channel_])
+    self.L = sum([channel.L for channel in watershed.channel_]) # summed channel lengths
 
-    self.N = int(self.T / self.dt)
-    self.K = int(self.L / self.dx)
+    self.N = int(self.T / self.dt) # Number of time points
+    self.K = int(self.L / self.dx) # Number of spatial points
 
     watershed.initialize(self)
 
   @property
   def alpha(self):
+    '''
+    Finite differencing stability parameter. See write-up on finite differencing.
+    '''
     return self.D_cont * self.dt / (self.dx**2)
 
   @property
   def beta(self):
+    '''
+    Implicit scheme parameter. See write-up on finite differencing.
+    '''
     return self.dt / (2*self.dx)
-
-  ### Solve coupled PDEs ###
-  ##########################
 
   def solve_runoff(self, watershed, fn_UHF, fn_IRF, fn_INPUT):
     '''
@@ -58,6 +66,9 @@ class Simulation:
     watershed.Q__ += self.Q0 # add baseflow
 
   def calc_B(self, watershed, L):
+    '''
+    Compute the simultaneous equation matrix B. See finite differencing write-up.
+    '''
     B__ = zeros([L,L])
     v = self.v0
     fill_diagonal(B__, 1+2*self.alpha)
@@ -71,6 +82,14 @@ class Simulation:
     return B__
 
   def solve_contaminant(self, watershed, fn_MASS):
+    '''
+    Solve for c(x,t) over the whole domain.
+    First must compute s(x,t) for each point in the domain.
+    Each spatial point in the domain has associated mass transfer parameters.
+    Mass m(x,t) must be converted to a source concentration s(x,t).
+    We use functional form of m(x,t) to compute s(x,t) based on the current flow.
+    The total field, c(x,t) can then be computed as the sum of contributions of each s(x,t)
+    '''
     t_ = watershed.t_
     for k,channel in enumerate(watershed.channel_):
       print("solving channel %d" % k)
@@ -90,13 +109,17 @@ class Simulation:
         s_ = zeros(Lws)
         s_[:Lch] = divide(m_, Q_k_[:Lch])
 
+        ### Find flow into the current pixel to determine concentration ###
         Q_km1_ = zeros(Lws)
         Q_km1_[1:] = Q_k_[:1]
         c_km1_ = zeros(Lws)
         c_km1_[1:] = c_[:1]
 
+        ### Compute source concentration field based on current flow ###
         s_ = s_ + multiply(c_km1_,(divide(Q_km1_,Q_k_)-1))
         s_ = s_.reshape(Lws,1)
+
+        ### Add source to current concentration, propagate forward ###
         c_ = c_ + s_
         c_np1_ = mdot(Binv__,c_)
 
@@ -113,8 +136,8 @@ class Watershed:
       Simulation properties:
           channel_ - list of 1D channels which comprise the watershed
           routing__ - Defines the routing topology through an adjacency matrix
-          UHF_params_ - UHF function parameters
-          IRF_params_ - IRF function parameters
+          UHF_params_ - Unit hydrograph function parameters
+          IRF_params_ - Impulse response function parameters
 
       Variable fields:
           Q__ - 2D array of total discharge. dim 0 is time, dim 1 is space
@@ -134,18 +157,30 @@ class Simple_Watershed(Watershed):
 
   @property
   def C(self):
+    '''
+    Returns the number of channels in the watershed
+    '''
     return len(self.channel_)
 
   @property
   def N(self):
+    '''
+    Returns the number of time indices
+    '''
     return self.Q__.shape[0]
 
   @property
   def K(self):
+    '''
+    Returns the number of spatial indices
+    '''
     return self.Q__.shape[1]
 
   @property
   def graph(self):
+    '''
+    Compute the watershed graph. This provide a binary mask indicating where the spatial domains of two channels intersect.
+    '''
     a__ = zeros([self.K,self.K])
     ptr = 0
     # Connect individual channels
@@ -185,6 +220,10 @@ class Simple_Watershed(Watershed):
     self.initialize_fields(sim)
 
   def initialize_routing_matrix(self):
+    '''
+    Initialize the graphs which represent connections between channels.
+    This will be used to join the spatial domains of each channel based on routing topology.
+    '''
     routing__ = zeros([self.C,self.C])
     adjacency__ = zeros([self.C,self.C])
     # set the main diagonal to the length of each channel
@@ -217,6 +256,9 @@ class Simple_Watershed(Watershed):
     self.adjacency__ = adjacency__
 
   def initialize_domain(self, sim):
+    '''
+    Initialize the time domain variable t_.
+    '''
     self.t_ = sim.dt*arange(sim.N) #
 
   def initialize_fields(self, sim):
@@ -228,8 +270,10 @@ class Simple_Watershed(Watershed):
 
   ### Index manipulation ###
   ##########################
-
   def get_index(self, x):
+    '''
+    Get spatial index of a point relative to a channel outlet.
+    '''
     return int(x / self.dx)
 
   def get_downstream_channel_sequence(self, channel):
@@ -271,13 +315,23 @@ class Simple_Watershed(Watershed):
 
   ### Watershed visualization ###
   def channel_xy_points(self, ch_idx, xf, yf, th):
+    '''
+    "Render" the channel as a series of points in cartesian coordinates.
+    '''
     x_local_ = -1*self.channel_[ch_idx].x_local_
     x_ = flip(xf + cos(radians(th))*x_local_)
     y_ = flip(yf + sin(radians(th))*x_local_)
     return vstack((x_,y_)).transpose() # L x 2
 
-  def watershed_xy_points(self, th):
-    outlet_pos__ = empty([self.C,self.C])
+  def watershed_xy_points(self, _th):
+    '''
+    "Render" the whole watershed as a series of points in cartesian coordinates.
+    TODO: Should replace this code with a standard library for visualizing trees
+    Generate a visualization of the watershed as a collection of x,y points
+    Parameters:
+        _th: a dictionary whose keys are the channel, and value is the angle at which to join
+    '''
+    outlet_pos__ = empty([self.C,3])
     xy__ = []
     for i,ch in enumerate(self.channel_):
       seq_ = self.get_downstream_channel_sequence(ch)
@@ -288,7 +342,7 @@ class Simple_Watershed(Watershed):
         L = self.routing__[i,c2idx] # how far upstream to join?
         c2pos_ = outlet_pos__[c2idx]
         xf_ = deepcopy(c2pos_)
-        xf_[2] += th
+        xf_[2] += _th[self.channel_.index(ch)]
         xf_[:2] -= asarray([L*cos(radians(c2pos_[2])),L*sin(radians(c2pos_[2]))])
       xy__.append(self.channel_xy_points(i,xf_[0],xf_[1],xf_[2]))
       outlet_pos__[i] = xf_
